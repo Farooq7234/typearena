@@ -1,7 +1,7 @@
 
 import type { Metadata } from "next";
 import Header from "@/components/header";
-import './global.css';
+import "./globals.css";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import AuthProvider from "@/context/authProvider";
 
