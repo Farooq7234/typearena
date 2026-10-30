@@ -1,0 +1,182 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
+import { useRoom } from "@/context/roomContext";
+import { useSession } from "next-auth/react";
+
+const TYPING_IDLE_MS = 1500;
+
+const ChatBox = () => {
+  const {
+    currentRoom,
+    messages,
+    sendMessage,
+    retryMessage,
+    isConnected,
+    typingUsers,
+    startTyping,
+    stopTyping,
+  } = useRoom();
+  const [messageInput, setMessageInput] = useState("");
+  const { data: session } = useSession();
+  const currentUserName = session?.user?.name;
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTypingTimer = () => {
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const content = messageInput.trim();
+    if (!content || !isConnected) return;
+
+    clearTypingTimer();
+    stopTyping();
+    setMessageInput("");
+    void sendMessage(content);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setMessageInput(value);
+
+    clearTypingTimer();
+
+    if (!value.trim()) {
+      stopTyping();
+      return;
+    }
+
+    startTyping();
+    typingTimerRef.current = setTimeout(() => {
+      stopTyping();
+    }, TYPING_IDLE_MS);
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, typingUsers]);
+
+  useEffect(() => {
+    return () => {
+      clearTypingTimer();
+      stopTyping();
+    };
+  }, [stopTyping]);
+
+  if (!currentRoom) {
+    return (
+      <div className="bg-gray-900 rounded-lg p-4 text-center">
+        <p className="text-gray-400">Join a room to start chatting</p>
+      </div>
+    );
+  }
+
+  const typingLabel =
+    typingUsers.length === 0
+      ? null
+      : typingUsers.length === 1
+        ? `${typingUsers[0]} is typing...`
+        : typingUsers.length === 2
+          ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+          : `${typingUsers.length} people are typing...`;
+
+  return (
+    <div className="bg-gray-900 rounded-lg p-4 h-[500px] flex flex-col w-full  ">
+      <div
+        className="flex-1 overflow-y-auto p-4 mb-4 [&::-webkit-scrollbar]:w-1
+  [&::-webkit-scrollbar-track]:rounded-full
+  [&::-webkit-scrollbar-track]:bg-gray-100
+  [&::-webkit-scrollbar-thumb]:rounded-full
+  [&::-webkit-scrollbar-thumb]:bg-gray-300"
+      >
+        {messages.map((msg) => {
+          const isOwnMessage = msg.user.name === currentUserName;
+          const time = new Date(msg.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          return (
+            <div
+              key={msg.id}
+              className={`flex flex-col ${isOwnMessage ? "items-end" : "items-start"}`}
+            >
+              <div
+                className={`max-w-xs px-3 py-2 rounded-lg text-sm shadow 
+                  ${
+                    isOwnMessage
+                      ? "bg-purple-600 text-white rounded-br-none"
+                      : "bg-gray-800 text-gray-100 rounded-bl-none"
+                  }`}
+              >
+                {!isOwnMessage && (
+                  <span className="block text-xs text-purple-400 font-medium mb-1">
+                    {msg.user.name}
+                  </span>
+                )}
+                {msg.content}
+              </div>
+              <span
+                className={`text-xs text-gray-400 mt-1 ${
+                  isOwnMessage ? "text-right" : "text-left"
+                }`}
+              >
+                {time}
+                {isOwnMessage && msg.status === "sending" && " - sending..."}
+                {isOwnMessage && msg.status === "failed" && (
+                  <button
+                    type="button"
+                    onClick={() => void retryMessage(msg)}
+                    className="ml-2 text-red-400 hover:text-red-300 underline"
+                  >
+                    failed, retry
+                  </button>
+                )}
+              </span>
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {typingLabel && (
+        <p className="px-1 pb-2 text-xs text-purple-400">{typingLabel}</p>
+      )}
+
+      <form
+        onSubmit={handleSendMessage}
+        className="flex flex-wrap sm:flex-nowrap gap-2"
+      >
+        <input
+          type="text"
+          value={messageInput}
+          onChange={handleInputChange}
+          placeholder="Type a message..."
+          className="flex-1 bg-gray-800 text-white px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+          disabled={!isConnected}
+        />
+        <button
+          type="submit"
+          disabled={!messageInput.trim() || !isConnected}
+          className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white w-full sm:w-fit px-4 py-2 rounded-md"
+        >
+          Send
+        </button>
+      </form>
+
+      <div className="text-xs text-gray-500 mt-2">
+        {isConnected ? "Connected" : "Reconnecting..."}
+      </div>
+    </div>
+  );
+};
+
+export default ChatBox;
